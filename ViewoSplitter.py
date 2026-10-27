@@ -331,9 +331,9 @@ def main():
         if os.name == 'nt' and Path(sys.executable).stem.lower() != 'pythonw':
             pythonw = Path(sys.executable).with_name("pythonw.exe")
             if not pythonw.is_file():
-                parser.error("pythonw.exe was not found. Use VideoContactSheet.pyw.")
+                parser.error("pythonw.exe was not found. Use ViewoSplitterGUI.pyw.")
             subprocess.Popen(
-                [str(pythonw), str(Path(__file__).resolve().with_suffix(".pyw")), *args.videos],
+                [str(pythonw), str(Path(__file__).resolve().with_name("ViewoSplitterGUI.pyw")), *args.videos],
                 creationflags=subprocess.CREATE_NO_WINDOW,
                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
             )

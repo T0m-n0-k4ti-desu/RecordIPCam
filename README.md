@@ -71,6 +71,18 @@ RecordIPCamGUI.pyw はコンソールを表示しない録画用GUIです。
     python RecordIPCam.py --gui
     python RecordIPCam.py --gui --config ./settings/cameras.json --output ./recordings
 
+![録画GUIの起動画面](images/RecordIPcam_ToolImage.PNG)
+
+画面上部で録画条件を設定し、中央の一覧でカメラごとの状態を確認します。
+画面下部には動作ログを表示します。起動しただけでは録画は開始しません。
+
+1. 「カメラ設定JSON」の「参照」から使用するJSONを選択します。D&Dにも対応しています。
+   起動時の入力値は作業ディレクトリに依存するため、実際に使うファイルの場所を確認してください。
+2. 必要に応じて「保存先」と「1ファイルの録画時間（分）」を指定します。
+   保存先を空欄にすると、選んだJSONと同じ場所の movie フォルダへ保存します。
+3. 「録画開始」を押します。一覧の「状態」と「保存中のファイル」で録画状況を確認できます。
+4. 終了する場合は「停止」を押し、画面に全カメラの停止完了が表示されるまで待ちます。
+   保存した動画は「保存先を開く」から確認できます。
 - 設定JSONと保存先を選択し、「録画開始」で全カメラの録画を開始します。
 - JSONの既定値は作業ディレクトリの IPCAM_USER.json です。
 - 保存先が空欄ならJSONと同じ場所の movie フォルダへ保存します。
@@ -123,7 +135,7 @@ Pythonスレッド数は作業ディレクトリの test_recordings/memory_repor
 
 ## 動画の抜粋画像一覧
 
-VideoContactSheet.py は録画処理と独立したツールです。
+ViewoSplitter.py は録画処理と独立したツールです。
 動画から静止画を抜粋し、時刻とフレーム番号を添えたJPEGの一覧画像を作成します。
 元の動画は変更しません。OpenCVとNumPyを使用し、GUIにはTkinterが必要です。D&Dには tkinterdnd2 を使用します。
 
@@ -135,24 +147,38 @@ VideoContactSheet.py は録画処理と独立したツールです。
 複数動画、秒数または枚数、列数、保存先、
 元解像度の抜粋画像の保存を選択できます。
 
-    python VideoContactSheet.py
+    python ViewoSplitter.py
 
-GUI専用の入口は VideoContactSheet.pyw です。
+GUI専用の入口は ViewoSplitterGUI.pyw です。
 .pyw がPythonに関連付けられた環境では、ダブルクリックでコンソールを開かずに起動できます。
 ターミナルからは次のコマンドでも起動できます。
 
-    pythonw VideoContactSheet.pyw
+    pythonw ViewoSplitterGUI.pyw
 
+![動画の抜粋画像一覧GUIの起動画面](images/VideoContactSheet_ToolImage.PNG)
+
+画面上部の一覧に動画を追加し、中央で抜粋方法と配置を設定します。
+下部のログで進行状況と出力先を確認できます。
+
+1. 動画を一覧へドラッグ＆ドロップするか、「動画を選択（複数可）」で追加します。
+   不要な動画は一覧で選び、「選択した動画を削除」で外します。
+2. 「間隔（秒）」または「枚数（動画全体から均等）」を選び、右側の数値欄に値を入力します。
+   例：間隔を60にすると1分ごと、枚数を12にすると動画全体から12枚を抜粋します。
+3. 「列数」で横に並べる画像の数を設定し、必要に応じて「保存先」を選びます。
+   空欄の場合は各動画と同じ場所の contact_sheets フォルダへ保存します。
+4. 個別の画像も必要なら「元解像度の抜粋画像も保存」にチェックを入れます。
+5. 「作成」を押し、ログに完了が表示されるまで待ちます。
+   ログに表示された出力先に、一覧JPEGと抽出位置を記録した report.json が作成されます。
 tkinterdnd2 が未インストールの場合は選択ボタンで動画を追加できます。
 動画を引数に指定するコマンドライン実行では、ログとエラーをコンソールに表示します。
 
 コマンドラインからも実行できます。
 
-    python VideoContactSheet.py video.mp4
-    python VideoContactSheet.py video.mp4 --interval 60
-    python VideoContactSheet.py video.mp4 --count 12
-    python VideoContactSheet.py video1.mp4 video2.mp4 --count 20 --columns 5
-    python VideoContactSheet.py "./movie/20261027/*.mp4" --output ./sheets --save-frames
+    python ViewoSplitter.py video.mp4
+    python ViewoSplitter.py video.mp4 --interval 60
+    python ViewoSplitter.py video.mp4 --count 12
+    python ViewoSplitter.py video1.mp4 video2.mp4 --count 20 --columns 5
+    python ViewoSplitter.py "./movie/20261027/*.mp4" --output ./sheets --save-frames
 
 - --interval: 抜粋間隔(秒)。既定は60秒で、動画の先頭から1分ごとに抜粋します。
 - --count: 動画全体から均等に抜粋する枚数。先頭と末尾を含み、1枚なら先頭のみです。
@@ -179,4 +205,4 @@ Windows版OpenCVで日本語の動画パスを直接開けない場合、一時�
 
 自動テストは次のコマンドで実行できます。
 
-    python -m unittest discover -s tests -p test_video_contact_sheet.py -v
+    python -m unittest discover -s tests -p test_viewo_splitter.py -v

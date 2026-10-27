@@ -9,7 +9,7 @@ from unittest.mock import patch
 import cv2
 import numpy as np
 
-from VideoContactSheet import CreateContactSheet, ProcessFiles
+from ViewoSplitter import CreateContactSheet, ProcessFiles
 
 
 class ContactSheetTests(unittest.TestCase):
@@ -91,7 +91,7 @@ class ContactSheetTests(unittest.TestCase):
                 return False
             def release(self):
                 self.cap.release()
-        with patch("VideoContactSheet.cv2.VideoCapture", FailedSeek):
+        with patch("ViewoSplitter.cv2.VideoCapture", FailedSeek):
             with self.assertRaises(ValueError):
                 CreateContactSheet(self.video, count=1)
         report = next((self.root / "contact_sheets").rglob("report.json"))
@@ -100,18 +100,18 @@ class ContactSheetTests(unittest.TestCase):
 
     @unittest.skipUnless(os.name == "nt", "Windows GUI launcher")
     def test_gui_uses_pythonw(self):
-        import VideoContactSheet as app
-        with patch.object(sys, "argv", ["VideoContactSheet.py", "--gui", "space name.mp4"]), patch.object(app.subprocess, "Popen") as launch:
+        import ViewoSplitter as app
+        with patch.object(sys, "argv", ["ViewoSplitter.py", "--gui", "space name.mp4"]), patch.object(app.subprocess, "Popen") as launch:
             self.assertEqual(app.main(), 0)
             command = launch.call_args.args[0]
             self.assertEqual(Path(command[0]).name.lower(), "pythonw.exe")
-            self.assertTrue(command[1].endswith(".pyw"))
+            self.assertEqual(Path(command[1]).name, "ViewoSplitterGUI.pyw")
             self.assertEqual(command[2], "space name.mp4")
             self.assertEqual(launch.call_args.kwargs["creationflags"], app.subprocess.CREATE_NO_WINDOW)
 
     def test_cli_keeps_console_processing(self):
-        import VideoContactSheet as app
-        with patch.object(sys, "argv", ["VideoContactSheet.py", str(self.video)]), patch.object(app, "ProcessFiles", return_value=0) as process, patch.object(app.subprocess, "Popen") as launch:
+        import ViewoSplitter as app
+        with patch.object(sys, "argv", ["ViewoSplitter.py", str(self.video)]), patch.object(app, "ProcessFiles", return_value=0) as process, patch.object(app.subprocess, "Popen") as launch:
             self.assertEqual(app.main(), 0)
             process.assert_called_once()
             launch.assert_not_called()
