@@ -84,10 +84,14 @@ def RecMovie(cap, movie_root_path, cam_name, time_sec, acceptabletime, fps = 15)
 """
   実際にスレッドで動かす処理
 """
-def CamThreadFunc(camname, addr, rectime, acceptabletime, mac_addr = "", json_path = None):
+def CamThreadFunc(camname, addr, rectime, acceptabletime, mac_addr = "", json_path = None, movie_root_path = None):
     cap = None
     search_next = 0
-    movie_root_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "movie")
+    # 保存先の明示指定を優先し、省略時はJsonの場所を基準にする
+    if movie_root_path is None:
+        base_path = os.path.dirname(os.path.abspath(json_path)) if json_path else os.getcwd()
+        movie_root_path = os.path.join(base_path, "movie")
+    movie_root_path = os.path.abspath(movie_root_path)
     try:
         while g.thread_running:
             try:
@@ -133,8 +137,8 @@ def CamThreadFunc(camname, addr, rectime, acceptabletime, mac_addr = "", json_pa
 """
   カメラスレッドの作成
 """
-def CamThreadCreate(camname, addr, rectime, acceptabletime, mac_addr = "", json_path = None):
-    return threading.Thread(target=CamThreadFunc, args=(camname, addr, rectime, acceptabletime, mac_addr, json_path))
+def CamThreadCreate(camname, addr, rectime, acceptabletime, mac_addr = "", json_path = None, movie_root_path = None):
+    return threading.Thread(target=CamThreadFunc, args=(camname, addr, rectime, acceptabletime, mac_addr, json_path, movie_root_path))
 
 """
   スレッドを止める用の処理
