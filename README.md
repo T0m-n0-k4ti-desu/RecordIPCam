@@ -96,3 +96,63 @@ Pythonスレッド数は作業ディレクトリの test_recordings/memory_repor
 
 短時間の反復試験だけでは2～3日の安定動作は判断できません。
 長時間運転では、メモリの増加傾向と保存ドライブの空き容量を確認してください。
+
+## 動画の抜粋画像一覧
+
+VideoContactSheet.py は録画処理と独立したツールです。
+動画から静止画を抜粋し、時刻とフレーム番号を添えたJPEGの一覧画像を作成します。
+元の動画は変更しません。OpenCVとNumPyを使用し、GUIにはTkinterが必要です。D&Dには tkinterdnd2 を使用します。
+
+    python -m pip install -r requirements-contact-sheet.txt
+
+引数なしで起動するとGUIを開きます。Windowsではpythonwに切り替え、GUI用のコンソールを残しません。
+エクスプローラーから一覧へ複数の動画をドラッグ＆ドロップできます。選択ボタンからの追加も可能です。
+同じ動画は重複追加せず、一覧で選択した動画は削除ボタンで外せます。
+複数動画、秒数または枚数、列数、保存先、
+元解像度の抜粋画像の保存を選択できます。
+
+    python VideoContactSheet.py
+
+GUI専用の入口は VideoContactSheet.pyw です。
+.pyw がPythonに関連付けられた環境では、ダブルクリックでコンソールを開かずに起動できます。
+ターミナルからは次のコマンドでも起動できます。
+
+    pythonw VideoContactSheet.pyw
+
+tkinterdnd2 が未インストールの場合は選択ボタンで動画を追加できます。
+動画を引数に指定するコマンドライン実行では、ログとエラーをコンソールに表示します。
+
+コマンドラインからも実行できます。
+
+    python VideoContactSheet.py video.mp4
+    python VideoContactSheet.py video.mp4 --interval 60
+    python VideoContactSheet.py video.mp4 --count 12
+    python VideoContactSheet.py video1.mp4 video2.mp4 --count 20 --columns 5
+    python VideoContactSheet.py "./movie/20261027/*.mp4" --output ./sheets --save-frames
+
+- --interval: 抜粋間隔(秒)。既定は60秒で、動画の先頭から1分ごとに抜粋します。
+- --count: 動画全体から均等に抜粋する枚数。先頭と末尾を含み、1枚なら先頭のみです。
+  フレーム数より多く指定した場合はフレーム数までに制限します。
+  --interval とは同時指定できません。1動画の最大抜粋数は10000枚です。
+- --columns: 一覧の列数。既定は4です。
+- --width: 1画像の幅。既定は480ピクセルです。縦横比を保ち、余白を付けて配置します。
+- --rows: 1ページの最大行数。既定は8です。超えた分は次のJPEGへ分けます。
+- --output: 保存先。省略時は各動画と同じ場所の contact_sheets フォルダです。
+- --save-frames: 一覧に加え、元解像度の抜粋JPEGも frames フォルダへ保存します。
+- --gui: GUIを開きます。
+
+出力先には動画ごとの専用フォルダを作成し、再実行時も既存の結果は上書きしません。
+contact_sheet_001.jpg などの一覧画像と、抽出位置・エラーを記録した report.json を保存します。
+画像内の時刻は動画先頭からの経過時間、フレーム番号は0始まりです。
+経過時間はフレーム番号と申告FPSから計算するため、可変FPS動画では目安になります。
+映像に焼き込まれたカメラの日時を読み取る機能はありません。
+抽出できなかった位置はJSONへ記録し、複数動画はエラーがあっても次の動画へ進みます。
+このツールは抜粋位置だけを読み込むため、全フレームの破損検査には使えません。
+
+Windows版OpenCVで日本語の動画パスを直接開けない場合、一時パスから読み込みます。
+同一ドライブでハードリンクを作れない場合は一時コピーを作るため、動画分の空き容量が必要です。
+一時ファイルは処理後に削除します。
+
+自動テストは次のコマンドで実行できます。
+
+    python -m unittest discover -s tests -p test_video_contact_sheet.py -v
