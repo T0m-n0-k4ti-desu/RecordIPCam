@@ -2,6 +2,8 @@ import cv2
 import time
 import threading
 import datetime
+import math
+import os
 
 # 自作moduleのimport
 from module import CamTime
@@ -14,111 +16,113 @@ from module import gloval_value as g
  録画機能
 """
 def RecMovie(cap, movie_root_path, cam_name, time_sec, acceptabletime, fps = 15):
-    ret = True
-    date_str = CamTime.GetDate()
-    time_str = CamTime.GetTime()
+    if not g.thread_running:
+        return False
+    if time_sec <= 0:
+        raise ValueError(f"[{cam_name}]\t Invalid record time.")
 
-    dirpath = movie_root_path + '/' + date_str
-    filepath = dirpath + '/' + cam_name + '_' + date_str + '_' + time_str + '.mp4'
+    now = datetime.datetime.now()
+    date_str = now.strftime('%Y%m%d')
+    time_str = now.strftime('%H%M%S_%f')
 
+    dirpath = os.path.join(movie_root_path, date_str)
+    filepath = os.path.join(dirpath, cam_name + '_' + date_str + '_' + time_str + '.mp4')
     FileManager.Mkdir(dirpath, filepath)
+
+    # カメラのFPSを使用(取得できない場合は既定値)
+    cap_fps = cap.get(cv2.CAP_PROP_FPS)
+    if math.isfinite(cap_fps) and cap_fps > 0:
+        fps = cap_fps
+
+    # 最初のフレームでサイズと取得状態を確認
+    cap_ret, frame = cap.read()
+    if not g.thread_running:
+        return False
+    if not cap_ret or frame is None:
+        raise ConnectionError(f"[{cam_name}]\t Frame loading failure.")
+    h, w = frame.shape[:2]
 
     # 動画保存時の形式を設定
     fourcc = cv2.VideoWriter_fourcc('m', 'p', '4', 'v')
+    video = cv2.VideoWriter()
+    try:
+        video.open(filepath, fourcc, fps, (w, h))
+        if not video.isOpened():
+            raise OSError(f"[{cam_name}]\t Video file opening failure.")
 
-    # カメラの幅を取得
-    w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    # カメラの高さを取得
-    h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        print(f"[{cam_name}]\tFilePath: {filepath}")
+        print(f"[{cam_name}]\tWidth: {w}, Height: {h}, FPS: {fps}")
+        print(f"[{cam_name}]\tRecord Time    : {time_sec}s")
+        print(f"[{cam_name}]\t--- Record Start! ---")
 
-    #　情報の表示
-    print(f"[{cam_name}]\tFilePath: {filepath}")
-    print(f"[{cam_name}]\tWidth: {w}, Height: {h}, FPS: {fps}")
-    print(f"[{cam_name}]\tRecord Time    : {time_sec}s")
-    print(f"[{cam_name}]\tAcceptable Time: {acceptabletime}s")
-    
-    time_start = time.time()
-    print(f"[{cam_name}]\tStart Time   : {datetime.datetime.fromtimestamp(time_start)}")
-    print(f"[{cam_name}]\tSchedule Time: {datetime.datetime.fromtimestamp(time_start + time_sec)}")
+        # 時計の補正に影響されない経過時間でファイルを分割
+        time_start = time.monotonic()
+        while g.thread_running:
+            if time.monotonic() - time_start >= time_sec:
+                break
+            if frame.shape[:2] != (h, w):
+                raise ValueError(f"[{cam_name}]\t Frame size changed.")
+            video.write(frame)
 
-    # (保存名前、fourcc,fps,サイズ)
-    video = cv2.VideoWriter(filepath, fourcc, fps, (w,h))
+            cap_ret, frame = cap.read()
+            if not g.thread_running:
+                return False
+            if not cap_ret or frame is None:
+                raise ConnectionError(f"[{cam_name}]\t Frame loading failure.")
+            if time.monotonic() - time_start > time_sec + acceptabletime:
+                raise TimeoutError(f"[{cam_name}]\t Recording time exceeded.")
+    finally:
+        # 取得失敗・停止時も動画ファイルを閉じる
+        video.release()
+        print(f"[{cam_name}]\t--- Record Stop! ---")
 
-    #　動画の保存
-    print(f"[{cam_name}]\t--- Record Start! ---")
-    max_frame = int(fps * time_sec)
-    time_prev = time.time()
-    for i in range(max_frame):
-        time_now = time.time()
-        if time_now > (time_start + time_sec + acceptabletime):
-            print(f"[{cam_name}]\t Recording time exceeded.")
-            break
-
-        if (time_prev - time_now) > 1:
-            print(f"[{cam_name}]\t Camera timeout occurred.")
-            break
-
-        if g.thread_running == False:
-            # スレッド終了命令を受けていた場合は終了
-            print(f"[{cam_name}]\t--- Thread Stop! ---")
-            ret = False
-            break
-
-        try:
-            cap_ret, frame = cap.read() # 1フレーム読み込み
-            video.write(frame)          # 1フレーム保存する
-        except:
-            print(f"[{cam_name}]\t Frame loading failure.")
-            break
-        time_prev = time.time()
-    print(f"[{cam_name}]\t--- Record Stop! ---")
-
-    # 終了
-    video.release()
-
-    time_end = time.time()
-    print(f"[{cam_name}]\tEnd Time: {datetime.datetime.fromtimestamp(time_end)}")
-
-    # 開始時間と終了時間が予定と異なる場合はエラー
-    time_interval = time_end - time_start
-    if time_interval > (time_sec + acceptabletime) or time_interval < (time_sec - acceptabletime):
-        raise ValueError(f"[{cam_name}]\t Intarval Error")
-    
-    return ret
+    return g.thread_running
 
 """
   実際にスレッドで動かす処理
 """
-def CamThreadFunc(camname, addr ,rectime, acceptabletime):
-    cap = CamCap.OpenCap(camname, addr)
-    rec_runing = True
-    while rec_runing:
-        try:
-            rec_runing = RecMovie(cap, "movie", camname, rectime, acceptabletime)
-        except Exception as e:
-            # 雑すぎるエラー処理(カメラを閉じて開き直す)
-            if g.thread_running == True:
-                print(f"{e}")
-                cap = CamCap.ReOpenCap(camname, cap, addr)
-                rec_runing = True
-            else:
-                rec_runing = False
-    CamCap.CloseCap(camname, cap)
+def CamThreadFunc(camname, addr, rectime, acceptabletime):
+    cap = None
+    movie_root_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "movie")
+    try:
+        while g.thread_running:
+            try:
+                if cap is None:
+                    cap = CamCap.OpenCap(camname, addr)
+                if not RecMovie(cap, movie_root_path, camname, rectime, acceptabletime):
+                    break
+            except Exception as e:
+                if not g.thread_running:
+                    break
+                # 接続失敗も含めて再試行(認証情報は表示しない)
+                print(f"[{camname}]\t Recording failure: {type(e).__name__}")
+                CamCap.CloseCap(camname, cap)
+                cap = None
+                for i in range(50):
+                    if not g.thread_running:
+                        break
+                    time.sleep(0.1)
+    finally:
+        CamCap.CloseCap(camname, cap)
 
 """
   カメラスレッドの作成
 """
-def CamThreadCreate(camname ,addr ,rectime, acceptabletime):
-    return threading.Thread(target=CamThreadFunc, args=(camname ,addr, rectime, acceptabletime))
+def CamThreadCreate(camname, addr, rectime, acceptabletime):
+    return threading.Thread(target=CamThreadFunc, args=(camname, addr, rectime, acceptabletime))
 
 """
   スレッドを止める用の処理
 """
-def CamTreadClose():
+def CamTreadClose(cam_threads):
     try:
-        while True:
-            time.sleep(1)
+        while any(cam_thread.is_alive() for cam_thread in cam_threads):
+            time.sleep(0.1)
     except KeyboardInterrupt:
         # Press '[ctrl] + [c]'
+        pass
+    finally:
         g.thread_running = False
+        for cam_thread in cam_threads:
+            cam_thread.join()
         cv2.destroyAllWindows()

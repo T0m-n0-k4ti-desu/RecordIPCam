@@ -19,7 +19,7 @@ g.thread_running = True
 if __name__ == '__main__':
     rectime = CamTime.GetRecTime()
     acceptabletime = CamTime.GetAcceptableTime(rectime)
-    addrs = JsonManager.CreateRTSPADDR_FromJson('./IPCAM_USER.json')
+    addrs = JsonManager.CreateRTSPADDR_FromJson(os.path.join(os.path.dirname(__file__), 'IPCAM_USER.json'))
 
     cam_threads = []
     cam_maxnum = len(addrs)
@@ -30,4 +30,4 @@ if __name__ == '__main__':
         cam_threads[i].start()
 
     # スレッド停止用の処理で待機
-    ThreadManager.CamTreadClose()
+    ThreadManager.CamTreadClose(cam_threads)
