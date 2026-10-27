@@ -26,7 +26,7 @@ if __name__ == '__main__':
 
     # カメラ数分のスレッド起動
     for i in range(cam_maxnum):
-        cam_threads.append(ThreadManager.CamThreadCreate(addrs[i]["cam_name"], addrs[i]["rtsp_addr"], rectime, acceptabletime))
+        cam_threads.append(ThreadManager.CamThreadCreate(addrs[i]["cam_name"], addrs[i]["rtsp_addr"], rectime, acceptabletime, addrs[i]["mac_addr"], addrs[i]["json_path"]))
         cam_threads[i].start()
 
     # スレッド停止用の処理で待機

@@ -4,10 +4,13 @@ import threading
 import datetime
 import math
 import os
+from urllib.parse import urlsplit
 
 # 自作moduleのimport
 from module import CamTime
 from module import CamCap
+from module import CamNetwork
+from module import JsonManager
 from module import FileManager
 from module import gloval_value as g
 
@@ -81,8 +84,9 @@ def RecMovie(cap, movie_root_path, cam_name, time_sec, acceptabletime, fps = 15)
 """
   実際にスレッドで動かす処理
 """
-def CamThreadFunc(camname, addr, rectime, acceptabletime):
+def CamThreadFunc(camname, addr, rectime, acceptabletime, mac_addr = "", json_path = None):
     cap = None
+    search_next = 0
     movie_root_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "movie")
     try:
         while g.thread_running:
@@ -98,6 +102,27 @@ def CamThreadFunc(camname, addr, rectime, acceptabletime):
                 print(f"[{camname}]\t Recording failure: {type(e).__name__}")
                 CamCap.CloseCap(camname, cap)
                 cap = None
+                # MAC指定時は接続先を再探索(失敗が続いても探索は60秒間隔)
+                if mac_addr and time.monotonic() >= search_next:
+                    try:
+                        print(f"[{camname}]\t Searching camera by MAC address.")
+                        host_ip = CamNetwork.FindIP_FromMAC(mac_addr, urlsplit(addr).hostname)
+                        if host_ip:
+                            addr = CamNetwork.ReplaceRTSPHost(addr, host_ip)
+                            print(f"[{camname}]\t Camera address found: {host_ip}")
+                            if json_path:
+                                try:
+                                    if JsonManager.UpdateHostIP_FromMAC(json_path, camname, mac_addr, host_ip):
+                                        print(f"[{camname}]\t Camera address saved to JSON.")
+                                except Exception as save_error:
+                                    # 保存失敗でも発見したIPでの再接続は継続
+                                    print(f"[{camname}]\t JSON update failure: {type(save_error).__name__}")
+                        else:
+                            print(f"[{camname}]\t Camera address not found.")
+                    except Exception as search_error:
+                        # 探索できない場合も元の接続先で再試行を続ける
+                        print(f"[{camname}]\t Search failure: {type(search_error).__name__}")
+                    search_next = time.monotonic() + 60
                 for i in range(50):
                     if not g.thread_running:
                         break
@@ -108,8 +133,8 @@ def CamThreadFunc(camname, addr, rectime, acceptabletime):
 """
   カメラスレッドの作成
 """
-def CamThreadCreate(camname, addr, rectime, acceptabletime):
-    return threading.Thread(target=CamThreadFunc, args=(camname, addr, rectime, acceptabletime))
+def CamThreadCreate(camname, addr, rectime, acceptabletime, mac_addr = "", json_path = None):
+    return threading.Thread(target=CamThreadFunc, args=(camname, addr, rectime, acceptabletime, mac_addr, json_path))
 
 """
   スレッドを止める用の処理
