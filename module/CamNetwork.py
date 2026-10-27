@@ -15,6 +15,9 @@ from module import gloval_value as g
 search_workers = 16
 search_max_addresses = 1024
 search_lock = threading.Lock()
+arp_lock = threading.Lock()
+arp_library = None
+send_arp_func = None
 
 """
  MACアドレスの表記を統一
@@ -71,12 +74,18 @@ def GetSearchHosts(host_ip):
 def GetMACAddress(host_ip, local_ip):
     if not g.thread_running:
         return ""
-    send_arp = ctypes.WinDLL("iphlpapi.dll").SendARP
-    send_arp.argtypes = [
-        ctypes.c_ulong, ctypes.c_ulong, ctypes.c_void_p,
-        ctypes.POINTER(ctypes.c_ulong)
-    ]
-    send_arp.restype = ctypes.c_ulong
+    global arp_library, send_arp_func
+    # DLLはプロセス内で一度だけ読み込む(探索ごとの参照増加を防ぐ)
+    with arp_lock:
+        if send_arp_func is None:
+            arp_library = ctypes.WinDLL("iphlpapi.dll")
+            send_arp_func = arp_library.SendARP
+            send_arp_func.argtypes = [
+                ctypes.c_ulong, ctypes.c_ulong, ctypes.c_void_p,
+                ctypes.POINTER(ctypes.c_ulong)
+            ]
+            send_arp_func.restype = ctypes.c_ulong
+    send_arp = send_arp_func
     dest = int.from_bytes(socket.inet_aton(host_ip), 'little')
     source = int.from_bytes(socket.inet_aton(local_ip), 'little')
     address = (ctypes.c_ubyte * 6)()
