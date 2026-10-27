@@ -12,13 +12,14 @@ from module import CamCap
 from module import CamNetwork
 from module import JsonManager
 from module import FileManager
+from module import NativeLog
 from module import gloval_value as g
 
 
 """
  録画機能
 """
-def RecMovie(cap, movie_root_path, cam_name, time_sec, acceptabletime, fps = 15, status_callback = None):
+def RecMovie(cap, movie_root_path, cam_name, time_sec, acceptabletime, fps = 15, status_callback = None, save_log = False):
     if not g.thread_running:
         return False
     if time_sec <= 0:
@@ -27,36 +28,68 @@ def RecMovie(cap, movie_root_path, cam_name, time_sec, acceptabletime, fps = 15,
     now = datetime.datetime.now()
     date_str = now.strftime('%Y%m%d')
     time_str = now.strftime('%H%M%S_%f')
-
     dirpath = os.path.join(movie_root_path, date_str)
     filepath = os.path.join(dirpath, cam_name + '_' + date_str + '_' + time_str + '.mp4')
     FileManager.Mkdir(dirpath, filepath)
 
-    # カメラのFPSを使用(取得できない場合は既定値)
-    cap_fps = cap.get(cv2.CAP_PROP_FPS)
-    if math.isfinite(cap_fps) and cap_fps > 0:
-        fps = cap_fps
+    # カメラ・動画ごとに専用のログを開く(GUIの表示上限とは独立)
+    log_file = None
+    if save_log:
+        try:
+            log_file = open(os.path.splitext(filepath)[0] + '.txt', 'a', encoding='utf-8')
+        except OSError as error:
+            print(f"[{cam_name}]\t Log opening failure: {type(error).__name__}")
 
-    # 最初のフレームでサイズと取得状態を確認
-    cap_ret, frame = cap.read()
-    if not g.thread_running:
-        return False
-    if not cap_ret or frame is None:
-        raise ConnectionError(f"[{cam_name}]\t Frame loading failure.")
-    h, w = frame.shape[:2]
+    log_lock = threading.RLock()
+    def write_file(message):
+        nonlocal log_file
+        with log_lock:
+            if log_file is not None:
+                try:
+                    stamp = datetime.datetime.now().isoformat(timespec='seconds')
+                    log_file.write(f"{stamp}\t[{cam_name}]\t{message}\n")
+                    log_file.flush()
+                except OSError as error:
+                    # ログ保存に失敗しても録画を継続
+                    try:
+                        log_file.close()
+                    except OSError:
+                        pass
+                    log_file = None
+                    print(f"[{cam_name}]\t Log writing failure: {type(error).__name__}")
 
-    # 動画保存時の形式を設定
-    fourcc = cv2.VideoWriter_fourcc('m', 'p', '4', 'v')
-    video = cv2.VideoWriter()
+    def write_log(message):
+        print(f"[{cam_name}]\t{message}")
+        write_file(message)
+
+    if log_file is not None:
+        NativeLog.capture.register(write_file)
+
+    video = None
+    frames_written = 0
+    time_start = time.monotonic()
+    result = "stopped"
     try:
+        write_log(f"FilePath: {filepath}")
+        write_log(f"Record Time: {time_sec}s")
+        cap_fps = cap.get(cv2.CAP_PROP_FPS)
+        if math.isfinite(cap_fps) and cap_fps > 0:
+            fps = cap_fps
+
+        # 最初のフレームでサイズと取得状態を確認
+        cap_ret, frame = cap.read()
+        if not g.thread_running:
+            return False
+        if not cap_ret or frame is None:
+            raise ConnectionError(f"[{cam_name}]\t Frame loading failure.")
+        h, w = frame.shape[:2]
+        fourcc = cv2.VideoWriter_fourcc('m', 'p', '4', 'v')
+        video = cv2.VideoWriter()
         video.open(filepath, fourcc, fps, (w, h))
         if not video.isOpened():
             raise OSError(f"[{cam_name}]\t Video file opening failure.")
-
-        print(f"[{cam_name}]\tFilePath: {filepath}")
-        print(f"[{cam_name}]\tWidth: {w}, Height: {h}, FPS: {fps}")
-        print(f"[{cam_name}]\tRecord Time    : {time_sec}s")
-        print(f"[{cam_name}]\t--- Record Start! ---")
+        write_log(f"Width: {w}, Height: {h}, FPS: {fps}")
+        write_log("--- Record Start! ---")
         if status_callback:
             status_callback("録画中", filepath)
 
@@ -64,11 +97,12 @@ def RecMovie(cap, movie_root_path, cam_name, time_sec, acceptabletime, fps = 15,
         time_start = time.monotonic()
         while g.thread_running:
             if time.monotonic() - time_start >= time_sec:
+                result = "completed"
                 break
             if frame.shape[:2] != (h, w):
                 raise ValueError(f"[{cam_name}]\t Frame size changed.")
             video.write(frame)
-
+            frames_written += 1
             cap_ret, frame = cap.read()
             if not g.thread_running:
                 return False
@@ -76,17 +110,32 @@ def RecMovie(cap, movie_root_path, cam_name, time_sec, acceptabletime, fps = 15,
                 raise ConnectionError(f"[{cam_name}]\t Frame loading failure.")
             if time.monotonic() - time_start > time_sec + acceptabletime:
                 raise TimeoutError(f"[{cam_name}]\t Recording time exceeded.")
+        return g.thread_running
+    except Exception as error:
+        result = "error: " + type(error).__name__
+        write_log("Recording failure: " + type(error).__name__)
+        raise
     finally:
-        # 取得失敗・停止時も動画ファイルを閉じる
-        video.release()
-        print(f"[{cam_name}]\t--- Record Stop! ---")
-
-    return g.thread_running
+        try:
+            if video is not None:
+                video.release()
+        finally:
+            write_log(f"Result: {result}; Frames submitted: {frames_written}; Elapsed: {time.monotonic() - time_start:.3f}s")
+            write_log("--- Record Stop! ---")
+            NativeLog.capture.unregister(write_file)
+            with log_lock:
+                if log_file is not None:
+                    try:
+                        log_file.close()
+                    except OSError as error:
+                        print(f"[{cam_name}]\t Log closing failure: {type(error).__name__}")
+                    finally:
+                        log_file = None
 
 """
   実際にスレッドで動かす処理
 """
-def CamThreadFunc(camname, addr, rectime, acceptabletime, mac_addr = "", json_path = None, movie_root_path = None, status_callback = None):
+def CamThreadFunc(camname, addr, rectime, acceptabletime, mac_addr = "", json_path = None, movie_root_path = None, status_callback = None, save_log = False):
     cap = None
     search_next = 0
     # 保存先の明示指定を優先し、省略時はJsonの場所を基準にする
@@ -101,7 +150,7 @@ def CamThreadFunc(camname, addr, rectime, acceptabletime, mac_addr = "", json_pa
                     if status_callback:
                         status_callback("接続中", "")
                     cap = CamCap.OpenCap(camname, addr)
-                if not RecMovie(cap, movie_root_path, camname, rectime, acceptabletime, status_callback=status_callback):
+                if not RecMovie(cap, movie_root_path, camname, rectime, acceptabletime, status_callback=status_callback, save_log=save_log):
                     break
             except Exception as e:
                 if not g.thread_running:
@@ -145,8 +194,8 @@ def CamThreadFunc(camname, addr, rectime, acceptabletime, mac_addr = "", json_pa
 """
   カメラスレッドの作成
 """
-def CamThreadCreate(camname, addr, rectime, acceptabletime, mac_addr = "", json_path = None, movie_root_path = None, status_callback = None):
-    return threading.Thread(target=CamThreadFunc, args=(camname, addr, rectime, acceptabletime, mac_addr, json_path, movie_root_path, status_callback))
+def CamThreadCreate(camname, addr, rectime, acceptabletime, mac_addr = "", json_path = None, movie_root_path = None, status_callback = None, save_log = False):
+    return threading.Thread(target=CamThreadFunc, args=(camname, addr, rectime, acceptabletime, mac_addr, json_path, movie_root_path, status_callback, save_log))
 
 """
   スレッドを止める用の処理

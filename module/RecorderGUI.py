@@ -5,7 +5,7 @@ import sys
 import threading
 import time
 
-from module import CamTime, JsonManager, ThreadManager
+from module import CamTime, JsonManager, ThreadManager, NativeLog
 from module import gloval_value as g
 
 
@@ -21,7 +21,7 @@ class RecorderSession:
     def is_running(self):
         return any(thread.is_alive() for thread in self.threads)
 
-    def start(self, config, output, seconds, notify):
+    def start(self, config, output, seconds, notify, save_log = False):
         if self.is_running():
             raise RuntimeError("録画または停止処理が進行中です。")
         if not 1 <= seconds <= 86400:
@@ -46,7 +46,7 @@ class RecorderSession:
                     notify(("status", index, state, filepath))
                 thread = ThreadManager.CamThreadCreate(
                     cam["cam_name"], cam["rtsp_addr"], seconds, CamTime.GetAcceptableTime(seconds),
-                    cam["mac_addr"], cam["json_path"], self.output, status
+                    cam["mac_addr"], cam["json_path"], self.output, status, save_log
                 )
                 thread.start()
                 self.threads.append(thread)
@@ -105,6 +105,7 @@ def OpenGUI(config = "IPCAM_USER.json", output = ""):
     config_var = tk.StringVar(value=str(Path(config).resolve()))
     output_var = tk.StringVar(value=output)
     minutes_var = tk.StringVar(value=str(CamTime.GetRecTime() / 60))
+    save_log_var = tk.BooleanVar(value=False)
     summary_var = tk.StringVar(value="停止中")
     started = None
     stopping = False
@@ -143,6 +144,8 @@ def OpenGUI(config = "IPCAM_USER.json", output = ""):
     ttk.Label(panel, text="1ファイルの録画時間（分）").grid(row=2, column=0, sticky="w", pady=5)
     minutes_entry = ttk.Entry(panel, textvariable=minutes_var, width=12)
     minutes_entry.grid(row=2, column=1, sticky="w", padx=8)
+    log_check = ttk.Checkbutton(panel, text="動画ごとにテキストログを保存", variable=save_log_var)
+    log_check.grid(row=3, column=1, sticky="w", padx=8, pady=5)
     if DND_FILES:
         def drop(event):
             if not session.is_running():
@@ -152,7 +155,7 @@ def OpenGUI(config = "IPCAM_USER.json", output = ""):
             return "copy"
         config_entry.drop_target_register(DND_FILES)
         config_entry.dnd_bind("<<Drop>>", drop)
-    inputs = [config_entry, output_entry, minutes_entry, config_button, output_button]
+    inputs = [config_entry, output_entry, minutes_entry, config_button, output_button, log_check]
 
     buttons = ttk.Frame(root, padding=(12, 0))
     buttons.pack(fill="x")
@@ -193,7 +196,7 @@ def OpenGUI(config = "IPCAM_USER.json", output = ""):
             seconds = float(minutes_var.get()) * 60
             if not config_var.get().strip():
                 raise ValueError("設定JSONを選択してください。")
-            session.start(config_var.get(), output_var.get().strip(), seconds, send)
+            session.start(config_var.get(), output_var.get().strip(), seconds, send, save_log=save_log_var.get())
         except Exception as error:
             # 設定値やRTSP認証情報をエラーダイアログに出さない
             messagebox.showerror("録画開始失敗", f"設定JSON・保存先・分割時間を確認してください。\n{type(error).__name__}")
@@ -277,6 +280,10 @@ def OpenGUI(config = "IPCAM_USER.json", output = ""):
 
     original_stdout, original_stderr = sys.stdout, sys.stderr
     sys.stdout = sys.stderr = QueueLog(events)
+    try:
+        NativeLog.capture.start(lambda message: send(("log", message)))
+    except OSError as error:
+        send(("log", "Native stderr capture failure: " + type(error).__name__))
     root.protocol("WM_DELETE_WINDOW", close)
     root.after(100, poll)
     try:
@@ -285,4 +292,5 @@ def OpenGUI(config = "IPCAM_USER.json", output = ""):
         session.stop()
         for thread in session.threads:
             thread.join()
+        NativeLog.capture.stop()
         sys.stdout, sys.stderr = original_stdout, original_stderr

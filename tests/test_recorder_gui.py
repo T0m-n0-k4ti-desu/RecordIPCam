@@ -111,7 +111,7 @@ class RecorderGUITests(unittest.TestCase):
         cap.read.side_effect = read
         events = []
         with patch.object(tm.CamCap, "OpenCap", return_value=cap):
-            self.session.start(self.config, "", 60, events.append)
+            self.session.start(self.config, "", 60, events.append, save_log=True)
             deadline = time.monotonic() + 3
             while not any(event[2] == "録画中" for event in events) and time.monotonic() < deadline:
                 time.sleep(0.01)
@@ -122,6 +122,9 @@ class RecorderGUITests(unittest.TestCase):
                 thread.join(timeout=3)
         self.assertFalse(self.session.is_running())
         output = next((self.root / "movie").rglob("*.mp4"))
+        log = output.with_suffix(".txt")
+        self.assertTrue(log.is_file())
+        self.assertIn("Result: stopped", log.read_text(encoding="utf-8"))
         check = cv2.VideoCapture(str(output))
         try:
             ok, image = check.read()
