@@ -18,7 +18,7 @@ from module import gloval_value as g
 """
  録画機能
 """
-def RecMovie(cap, movie_root_path, cam_name, time_sec, acceptabletime, fps = 15):
+def RecMovie(cap, movie_root_path, cam_name, time_sec, acceptabletime, fps = 15, status_callback = None):
     if not g.thread_running:
         return False
     if time_sec <= 0:
@@ -57,6 +57,8 @@ def RecMovie(cap, movie_root_path, cam_name, time_sec, acceptabletime, fps = 15)
         print(f"[{cam_name}]\tWidth: {w}, Height: {h}, FPS: {fps}")
         print(f"[{cam_name}]\tRecord Time    : {time_sec}s")
         print(f"[{cam_name}]\t--- Record Start! ---")
+        if status_callback:
+            status_callback("録画中", filepath)
 
         # 時計の補正に影響されない経過時間でファイルを分割
         time_start = time.monotonic()
@@ -84,7 +86,7 @@ def RecMovie(cap, movie_root_path, cam_name, time_sec, acceptabletime, fps = 15)
 """
   実際にスレッドで動かす処理
 """
-def CamThreadFunc(camname, addr, rectime, acceptabletime, mac_addr = "", json_path = None, movie_root_path = None):
+def CamThreadFunc(camname, addr, rectime, acceptabletime, mac_addr = "", json_path = None, movie_root_path = None, status_callback = None):
     cap = None
     search_next = 0
     # 保存先の明示指定を優先し、省略時はJsonの場所を基準にする
@@ -96,12 +98,16 @@ def CamThreadFunc(camname, addr, rectime, acceptabletime, mac_addr = "", json_pa
         while g.thread_running:
             try:
                 if cap is None:
+                    if status_callback:
+                        status_callback("接続中", "")
                     cap = CamCap.OpenCap(camname, addr)
-                if not RecMovie(cap, movie_root_path, camname, rectime, acceptabletime):
+                if not RecMovie(cap, movie_root_path, camname, rectime, acceptabletime, status_callback=status_callback):
                     break
             except Exception as e:
                 if not g.thread_running:
                     break
+                if status_callback:
+                    status_callback("再接続待機: " + type(e).__name__, "")
                 # 接続失敗も含めて再試行(認証情報は表示しない)
                 print(f"[{camname}]\t Recording failure: {type(e).__name__}")
                 CamCap.CloseCap(camname, cap)
@@ -133,12 +139,14 @@ def CamThreadFunc(camname, addr, rectime, acceptabletime, mac_addr = "", json_pa
                     time.sleep(0.1)
     finally:
         CamCap.CloseCap(camname, cap)
+        if status_callback:
+            status_callback("停止", "")
 
 """
   カメラスレッドの作成
 """
-def CamThreadCreate(camname, addr, rectime, acceptabletime, mac_addr = "", json_path = None, movie_root_path = None):
-    return threading.Thread(target=CamThreadFunc, args=(camname, addr, rectime, acceptabletime, mac_addr, json_path, movie_root_path))
+def CamThreadCreate(camname, addr, rectime, acceptabletime, mac_addr = "", json_path = None, movie_root_path = None, status_callback = None):
+    return threading.Thread(target=CamThreadFunc, args=(camname, addr, rectime, acceptabletime, mac_addr, json_path, movie_root_path, status_callback))
 
 """
   スレッドを止める用の処理

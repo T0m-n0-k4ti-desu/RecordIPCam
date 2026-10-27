@@ -1,6 +1,7 @@
 import argparse
 import os
 import sys
+import subprocess
 
 # スクリプトのディレクトリパスをsys.pathに追加
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -21,7 +22,22 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="IPカメラの録画")
     parser.add_argument("--config", default="IPCAM_USER.json", help="設定JSONのパス")
     parser.add_argument("--output", help="動画の保存先(省略時はJSONと同じ場所のmovie)")
+    parser.add_argument("--gui", action="store_true", help="録画GUIを開く")
     args = parser.parse_args()
+
+    if args.gui:
+        if os.name == 'nt':
+            pythonw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
+            command = [pythonw, os.path.join(os.path.dirname(__file__), "RecordIPCamGUI.pyw"),
+                       "--config", args.config]
+            if args.output is not None:
+                command.extend(["--output", args.output])
+            subprocess.Popen(command, creationflags=subprocess.CREATE_NO_WINDOW,
+                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        else:
+            from module.RecorderGUI import OpenGUI
+            OpenGUI(args.config, args.output or "")
+        sys.exit(0)
 
     # 相対パスは起動時の作業ディレクトリを基準にする
     json_path = os.path.abspath(args.config)
