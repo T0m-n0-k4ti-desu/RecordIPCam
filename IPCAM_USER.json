@@ -1,17 +1,17 @@
 {
     "cams":  [
                  {
-                     "cam_name":  "veranda",
-                     "user_id":  "morita_cam",
-                     "user_pw":  "morita_pass",
-                     "host_ip":  "192.168.1.22",
+                     "cam_name":  "cam1",
+                     "user_id":  "cam1_id",
+                     "user_pw":  "cam1_pass",
+                     "host_ip":  "192.168.1.11",
                      "mac_addr":  "AA:BB:CC:DD:EE:FF"
                  },
                  {
-                     "cam_name":  "entrance",
-                     "user_id":  "morita_cam",
-                     "user_pw":  "morita_pass",
-                     "host_ip":  "192.168.1.11",
+                     "cam_name":  "cam2",
+                     "user_id":  "cam2_cam",
+                     "user_pw":  "cam2_pass",
+                     "host_ip":  "192.168.1.22",
                      "mac_addr":  "AA:BB:CC:DD:EE:FF"
                  }
              ]
